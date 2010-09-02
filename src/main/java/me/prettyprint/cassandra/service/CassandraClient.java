@@ -106,7 +106,9 @@ public interface CassandraClient {
    */
   String getServerVersion() throws HectorException;
 
-  CassandraHost getCassandraHost();  
+  CassandraHost getCassandraHost();
+
+  SystemTool getSystemTool();
 
   void markAsClosed();
 

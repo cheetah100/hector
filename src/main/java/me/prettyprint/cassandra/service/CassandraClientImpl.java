@@ -12,6 +12,7 @@ import me.prettyprint.cassandra.model.NotFoundException;
 
 import org.apache.cassandra.thrift.Cassandra;
 import org.apache.cassandra.thrift.ConsistencyLevel;
+import org.apache.cassandra.thrift.InvalidRequestException;
 import org.apache.cassandra.thrift.KsDef;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
@@ -124,9 +125,9 @@ import org.slf4j.LoggerFactory;
         keyspace = tmp;
       }
     }
+
     return keyspace;
   }
-
 
   @Override
   public List<KsDef> getKeyspaces() throws HectorTransportException {
@@ -187,7 +188,10 @@ import org.slf4j.LoggerFactory;
     return cassandraHost;
   }
 
-
+  @Override
+  public SystemTool getSystemTool() {
+    return new SystemToolImpl( this.cassandra );
+  }
 
   @Override
   public String toString() {
