@@ -60,6 +60,7 @@ public class SystemToolImpl implements SystemTool {
     @Override
     public void addColumnFamily(CfDef columnFamilyDefinition) {
         try {
+            client.set_keyspace( "system");
             client.system_add_column_family( columnFamilyDefinition );
         } catch (InvalidRequestException e) {
             throw new HectorException(e);
@@ -71,6 +72,7 @@ public class SystemToolImpl implements SystemTool {
     @Override
     public void renameColumnFamily(String from, String to) {
         try {
+            client.set_keyspace( "system");
             client.system_rename_column_family( from, to );
         } catch (InvalidRequestException e) {
             throw new HectorException(e);
