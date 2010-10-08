@@ -18,10 +18,10 @@ public interface SystemTool {
 
     public void dropKeyspace( String keyspace );
 
-    public void addColumnFamily( CfDef columnFamilyDefinition );
+    public void addColumnFamily( String keyspace, CfDef columnFamilyDefinition );
 
-    public void renameColumnFamily( String from, String to );
+    public void renameColumnFamily( String keyspace, String from, String to );
 
-    public void dropColumnFamily( String columnFamily );
+    public void dropColumnFamily( String keyspace, String columnFamily );
 
 }

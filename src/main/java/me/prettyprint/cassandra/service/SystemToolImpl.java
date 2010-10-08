@@ -58,9 +58,9 @@ public class SystemToolImpl implements SystemTool {
     }
 
     @Override
-    public void addColumnFamily(CfDef columnFamilyDefinition) {
+    public void addColumnFamily(String keyspace, CfDef columnFamilyDefinition) {
         try {
-            client.set_keyspace( "system");
+            client.set_keyspace( keyspace );
             client.system_add_column_family( columnFamilyDefinition );
         } catch (InvalidRequestException e) {
             throw new HectorException(e);
@@ -70,9 +70,9 @@ public class SystemToolImpl implements SystemTool {
     }
 
     @Override
-    public void renameColumnFamily(String from, String to) {
+    public void renameColumnFamily(String keyspace, String from, String to) {
         try {
-            client.set_keyspace( "system");
+            client.set_keyspace( keyspace );
             client.system_rename_column_family( from, to );
         } catch (InvalidRequestException e) {
             throw new HectorException(e);
@@ -83,8 +83,9 @@ public class SystemToolImpl implements SystemTool {
     }
 
     @Override
-    public void dropColumnFamily(String columnFamily) {
+    public void dropColumnFamily(String keyspace, String columnFamily) {
         try {
+            client.set_keyspace( keyspace );
             client.system_drop_column_family( columnFamily );
         } catch (InvalidRequestException e) {
             throw new HectorException(e);
