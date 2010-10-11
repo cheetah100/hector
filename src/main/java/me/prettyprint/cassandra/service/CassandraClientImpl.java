@@ -1,14 +1,15 @@
 package me.prettyprint.cassandra.service;
 
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-import me.prettyprint.cassandra.model.HectorException;
-import me.prettyprint.cassandra.model.HectorTransportException;
-import me.prettyprint.cassandra.model.NotFoundException;
+import me.prettyprint.hector.api.Cluster;
+import me.prettyprint.hector.api.ddl.HKsDef;
+import me.prettyprint.hector.api.exceptions.HNotFoundException;
+import me.prettyprint.hector.api.exceptions.HectorException;
+import me.prettyprint.hector.api.exceptions.HectorTransportException;
 
 import org.apache.cassandra.thrift.Cassandra;
 import org.apache.cassandra.thrift.ConsistencyLevel;
@@ -39,14 +40,14 @@ import org.slf4j.LoggerFactory;
 
   private final ClockResolution clockResolution;
 
-  private final ConcurrentHashMap<String, KeyspaceImpl> keyspaceMap =
-      new ConcurrentHashMap<String, KeyspaceImpl>();
+  private final ConcurrentHashMap<String, KeyspaceServiceImpl> keyspaceMap =
+      new ConcurrentHashMap<String, KeyspaceServiceImpl>();
 
   private String clusterName;
 
   private String serverVersion;
 
-  private final KeyspaceFactory keyspaceFactory;
+  private final KeyspaceServiceFactory keyspaceFactory;
 
   private final CassandraClientPool cassandraClientPool;
 
@@ -65,12 +66,11 @@ import org.slf4j.LoggerFactory;
   private final CassandraHost cassandraHost;
 
   public CassandraClientImpl(Cassandra.Client cassandraThriftClient,
-      KeyspaceFactory keyspaceFactory,
+      KeyspaceServiceFactory keyspaceFactory,
       CassandraHost cassandraHost,
       CassandraClientPool clientPools,
       Cluster cassandraCluster,
-      ClockResolution clockResolution)
-      throws UnknownHostException {
+      ClockResolution clockResolution) {
     mySerial = serial.incrementAndGet();
     cassandra = cassandraThriftClient;
     this.cassandraHost = cassandraHost;
@@ -91,35 +91,34 @@ import org.slf4j.LoggerFactory;
 
 
   @Override
-  public Keyspace getKeyspace(String keySpaceName) throws HectorException {
+  public KeyspaceService getKeyspace(String keySpaceName) throws HectorException {
     return getKeyspace(keySpaceName, DEFAULT_CONSISTENCY_LEVEL, DEFAULT_FAILOVER_POLICY);
   }
 
 
   @Override
-  public Keyspace getKeyspace(String keySpaceName, ConsistencyLevel consistency) throws IllegalArgumentException,
-      NotFoundException, HectorTransportException {
+  public KeyspaceService getKeyspace(String keySpaceName, ConsistencyLevel consistency) throws IllegalArgumentException,
+      HNotFoundException, HectorTransportException {
     return getKeyspace(keySpaceName, consistency, DEFAULT_FAILOVER_POLICY);
   }
 
 
   @Override
-  public Keyspace getKeyspace(String keyspaceName, ConsistencyLevel consistencyLevel,
+  public KeyspaceService getKeyspace(String keyspaceName, ConsistencyLevel consistencyLevel,
       FailoverPolicy failoverPolicy)
-      throws IllegalArgumentException, NotFoundException, HectorTransportException {
+      throws IllegalArgumentException, HNotFoundException, HectorTransportException {
     String keyspaceMapKey = buildKeyspaceMapName(keyspaceName, consistencyLevel, failoverPolicy);
-    KeyspaceImpl keyspace = keyspaceMap.get(keyspaceMapKey);
+    KeyspaceServiceImpl keyspace = keyspaceMap.get(keyspaceMapKey);
     if (keyspace == null) {
-      try {
-        KsDef keyspaceDesc = cassandra.describe_keyspace(keyspaceName);
-        keyspace = (KeyspaceImpl) keyspaceFactory.create(this, keyspaceName, keyspaceDesc,
-            consistencyLevel, failoverPolicy, cassandraClientPool);
-      } catch (TException e) {
-        throw new HectorTransportException(e);
-      } catch (org.apache.cassandra.thrift.NotFoundException e) {
-        throw new NotFoundException(e);
+
+      HKsDef keyspaceDesc = cluster.describeKeyspace(keyspaceName);
+      if ( keyspaceDesc == null ) {
+        throw new HNotFoundException("That keyspace is not defined on the cluster: " + keyspaceName);
       }
-      KeyspaceImpl tmp = keyspaceMap.putIfAbsent(keyspaceMapKey , keyspace);
+      keyspace = (KeyspaceServiceImpl) keyspaceFactory.create(this, keyspaceName, keyspaceDesc,
+          consistencyLevel, failoverPolicy, cassandraClientPool);
+
+      KeyspaceServiceImpl tmp = keyspaceMap.putIfAbsent(keyspaceMapKey , keyspace);
       if (tmp != null) {
         // There was another put that got here before we did.
         keyspace = tmp;
@@ -128,28 +127,6 @@ import org.slf4j.LoggerFactory;
 
     return keyspace;
   }
-
-  @Override
-  public List<KsDef> getKeyspaces() throws HectorTransportException {
-    List<KsDef> keyspaces = null;
-    try {
-      keyspaces = new ArrayList<KsDef>(cassandra.describe_keyspaces());
-    } catch (TException e) {
-      throw new HectorTransportException(e);
-    }
-    return keyspaces;
-  }
-
-  public boolean keyspaceExists(String keyspace) {
-    List<KsDef> ksDefs = getKeyspaces();
-    for (KsDef ksDef : ksDefs) {
-      if (ksDef.getName().equals(keyspace)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
 
   @Override
   public String getServerVersion() throws HectorException {
@@ -230,7 +207,7 @@ import org.slf4j.LoggerFactory;
 
 
   @Override
-  public void removeKeyspace(Keyspace k) {
+  public void removeKeyspace(KeyspaceService k) {
     String key = buildKeyspaceMapName(k.getName(), k.getConsistencyLevel(), k.getFailoverPolicy());
     keyspaceMap.remove(key);
   }

@@ -3,11 +3,11 @@ package me.prettyprint.cassandra.examples;
 import static me.prettyprint.cassandra.utils.StringUtils.bytes;
 import static me.prettyprint.cassandra.utils.StringUtils.string;
 import me.prettyprint.cassandra.dao.Command;
-import me.prettyprint.cassandra.model.Serializer;
-import me.prettyprint.cassandra.model.HectorException;
-import me.prettyprint.cassandra.model.NotFoundException;
 import me.prettyprint.cassandra.serializers.StringSerializer;
-import me.prettyprint.cassandra.service.Keyspace;
+import me.prettyprint.cassandra.service.KeyspaceService;
+import me.prettyprint.hector.api.Serializer;
+import me.prettyprint.hector.api.exceptions.HNotFoundException;
+import me.prettyprint.hector.api.exceptions.HectorException;
 
 import org.apache.cassandra.thrift.Column;
 import org.apache.cassandra.thrift.ColumnParent;
@@ -16,20 +16,22 @@ import org.apache.cassandra.thrift.ColumnPath;
 /**
  * An example DAO (data access object) which uses the Command pattern.
  * <p/>
- * This DAO is simple, it provides a get/insert/delte API for String values.
+ * This DAO is simple, it provides a get/insert/delete API for String values.
  * The underlying cassandra implementation stores the values under Keyspace1.key.Standard1.v
  * where key is the value's key, Standard1 is the name of the column family and "v" is just a column
  * name that's used to hold the value.
  * <p/>
  * what's interesting to notice here is that ease of operation that the command pattern provides.
  * The pattern assumes only one keyspace is required to perform the operation (get/insert/remove)
- * and injects it to the {@link Command#execute(Keyspace)} abstract method which is implemented
+ * and injects it to the {@link Command#execute(KeyspaceService)} abstract method which is implemented
  * by all the dao methods.
  * The {@link Command#execute(String, int, String)} which is then invoked, takes care of creating
- * the {@link Keyspace} instance and releasing it after the operation completes.
+ * the {@link KeyspaceService} instance and releasing it after the operation completes.
  *
  * @author Ran Tavory (rantav@gmail.com)
+ * @deprecated use ExampleDaoV2
  */
+@Deprecated
 public class ExampleDao {
 
   private final static String CASSANDRA_KEYSPACE = "Keyspace1";
@@ -55,7 +57,7 @@ public class ExampleDao {
   public <K >void insert(final K key, final String value, final Serializer<K> keySerializer) throws HectorException {
     execute(new Command<Void>() {
       @Override
-      public Void execute(final Keyspace ks) throws HectorException {
+      public Void execute(final KeyspaceService ks) throws HectorException {
         ks.insert(keySerializer.toBytes(key), new ColumnParent(CF_NAME), new Column(bytes(COLUMN_NAME), bytes(value), ks.createClock()));
         return null;
       }
@@ -70,10 +72,10 @@ public class ExampleDao {
   public <K> String get(final K key, final Serializer<K> keySerializer) throws HectorException {
     return execute(new Command<String>() {
       @Override
-      public String execute(final Keyspace ks) throws HectorException {
+      public String execute(final KeyspaceService ks) throws HectorException {
         try {
           return string(ks.getColumn(keySerializer.toBytes(key), createColumnPath(COLUMN_NAME)).getValue());
-        } catch (NotFoundException e) {
+        } catch (HNotFoundException e) {
           return null;
         }
       }
@@ -86,7 +88,7 @@ public class ExampleDao {
   public <K> void delete(final K key, final Serializer<K> keySerializer) throws HectorException {
     execute(new Command<Void>() {
       @Override
-      public Void execute(final Keyspace ks) throws HectorException {
+      public Void execute(final KeyspaceService ks) throws HectorException {
         ks.remove(keySerializer.toBytes(key), createColumnPath(COLUMN_NAME));
         return null;
       }

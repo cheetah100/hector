@@ -268,8 +268,7 @@ keyspaces:
 
         - name: StandardByUUID1
           compare_with: TimeUUIDType
-          clock_type: Timestamp
-          reconciler: TimestampReconciler          
+          
 
         - name: Super1
           column_type: Super
@@ -291,6 +290,6 @@ keyspaces:
           
         - name: Indexed1
           column_metadata:
-            - name: birthdate
+            - name: birthyear
               validator_class: LongType
               index_type: KEYS          

@@ -16,11 +16,10 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 import me.prettyprint.cassandra.BaseEmbededServerSetupTest;
-import me.prettyprint.cassandra.model.HectorException;
-import me.prettyprint.cassandra.model.InvalidRequestException;
-import me.prettyprint.cassandra.model.NotFoundException;
-import me.prettyprint.cassandra.model.PoolExhaustedException;
 import me.prettyprint.cassandra.serializers.StringSerializer;
+import me.prettyprint.hector.api.exceptions.HNotFoundException;
+import me.prettyprint.hector.api.exceptions.HectorException;
+import me.prettyprint.hector.api.exceptions.PoolExhaustedException;
 
 import org.apache.cassandra.thrift.Column;
 import org.apache.cassandra.thrift.ColumnOrSuperColumn;
@@ -33,7 +32,6 @@ import org.apache.cassandra.thrift.Mutation;
 import org.apache.cassandra.thrift.SlicePredicate;
 import org.apache.cassandra.thrift.SliceRange;
 import org.apache.cassandra.thrift.SuperColumn;
-import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -48,12 +46,12 @@ import org.junit.Test;
  * CompareSubcolumnsWith="UTF8Type" Name="Super1"/&gt;
  *
  * @author Ran Tavory (rantav@gmail.com)
- *
+ * @author zznate (nate@riptano.com)
  */
 public class KeyspaceTest extends BaseEmbededServerSetupTest {
 
   private CassandraClient client;
-  private Keyspace keyspace;
+  private KeyspaceService keyspace;
   private static final StringSerializer se = new StringSerializer();
 
   @Before
@@ -68,7 +66,7 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
 
   @Test
   public void testInsertAndGetAndRemove() throws IllegalArgumentException, NoSuchElementException,
-  IllegalStateException, NotFoundException, Exception {
+  IllegalStateException, HNotFoundException, Exception {
 
     // insert value
     ColumnPath cp = new ColumnPath("Standard1");
@@ -96,7 +94,7 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
       try {
         keyspace.getColumn("testInsertAndGetAndRemove_" + i, cp);
         fail("the value should already being deleted");
-      } catch (NotFoundException e) {
+      } catch (HNotFoundException e) {
         // good
       }
     }
@@ -107,15 +105,15 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
    */
   @Test
   public void testInsertSuper() throws IllegalArgumentException, NoSuchElementException,
-  IllegalStateException, NotFoundException, Exception {
+  IllegalStateException, HNotFoundException, Exception {
 
     // insert value
     ColumnParent columnParent = new ColumnParent("Super1");
     columnParent.setSuper_column(bytes("testInsertSuper_super"));
     Column column = new Column(bytes("testInsertSuper_column"), bytes("testInsertSuper_value"), keyspace.createClock());
-    
-  
-  
+
+
+
     keyspace.insert(bytes("testInsertSuper_key"), columnParent, column);
     column.setName(bytes("testInsertSuper_column2"));
     keyspace.insert(bytes("testInsertSuper_key"), columnParent, column);
@@ -133,46 +131,6 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
     keyspace.remove("testInsertSuper_super", cp2);
   }
 
-  @Test
-  public void testValideColumnPath() throws HectorException {
-    // Try to insert invalid columns
-    // insert value
-    ColumnPath cp = new ColumnPath("Standard1");
-    cp.setColumn(bytes("testValideColumnPath"));
-    try {
-      keyspace.insert("testValideColumnPath", cp, bytes("testValideColumnPath_value"));
-      keyspace.remove("testValideColumnPath", cp);
-    } catch (InvalidRequestException e) {
-      fail("Should not have thrown an error for Standard1");
-    }
-
-    cp = new ColumnPath("CFdoesNotExist");
-    cp.setColumn(bytes("testInsertAndGetAndRemove"));
-    try {
-      keyspace.insert("testValideColumnPath", cp, bytes("testValideColumnPath_value"));
-      fail("Should have failed with CFdoesNotExist");
-    } catch (InvalidRequestException e) {    
-      assertTrue(StringUtils.contains(e.getWhy(),"column family does not exist"));
-    }
-
-    cp = new ColumnPath("Standard1");
-    cp.setSuper_column(bytes("testInsertAndGetAndRemove"));
-    try {
-      keyspace.insert("testValideColumnPath", cp, bytes("testValideColumnPath_value"));
-      fail("Should have failed with supercolumn");
-    } catch (InvalidRequestException e) {
-      assertTrue(StringUtils.contains(e.getWhy(),"Make sure you have the right type"));
-    }
-
-    cp = new ColumnPath("Super1");
-    cp.setColumn(bytes("testInsertAndGetAndRemove"));
-    try {
-      keyspace.insert("testValideColumnPath", cp, bytes("testValideColumnPath_value"));
-      fail("Should have failed with supercolumn");
-    } catch (InvalidRequestException e) {
-      assertTrue(StringUtils.contains(e.getWhy(),"Make sure you have"));
-    }
-  }
 
   @Test
   public void testBatchInsertColumn() throws HectorException {
@@ -281,7 +239,7 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
         try {
           keyspace.getColumn("testBatchMutateColumn_" + i, cp);
           fail();
-        } catch (NotFoundException e) {
+        } catch (HNotFoundException e) {
         }
 
       }
@@ -335,7 +293,7 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
         try {
           keyspace.getColumn("testBatchMutateColumn_" + i, cp);
           fail();
-        } catch (NotFoundException e) {
+        } catch (HNotFoundException e) {
           // good, we want this to throw.
         }
 
@@ -783,7 +741,7 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
     SliceRange sr = new SliceRange(new byte[0], new byte[0], false, 150);
     SlicePredicate sp = new SlicePredicate();
     sp.setSlice_range(sr);
-    
+
     /*
     @SuppressWarnings("deprecation")
     Map<String, List<SuperColumn>> keySlices = keyspace.getSuperRangeSlice(clp, sp,
@@ -797,7 +755,7 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
     assertEquals(1, keySlices.get("testGetSuperRangeSlice1").size());
     assertEquals(10, keySlices.get("testGetSuperRangeSlice1").get(0).getColumns().size());
     */
-    
+
     ColumnPath cp = new ColumnPath("Super1");
     keyspace.remove("testGetSuperRangeSlice0", cp);
     keyspace.remove("testGetSuperRangeSlice1", cp);
@@ -838,7 +796,7 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
     keyspace.remove("testGetSuperRangeSlices0", cp);
     keyspace.remove("testGetSuperRangeSlices1", cp);
   }
-  
+
   @Test
   public void testMultigetCount() {
     // insert 25 columns into 10 rows
@@ -847,10 +805,11 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
       for (int i = 0; i < 25; i++) {
         ColumnPath cp = new ColumnPath("Standard1");
         cp.setColumn(bytes("testMultigetCount_column_" + i));
-        keyspace.insert("testMultigetCount_key_"+j, cp, bytes("testMultigetCount_value_" + i));  
+        keyspace.insert("testMultigetCount_key_"+j, cp, bytes("testMultigetCount_value_" + i));
       }
-      if (j % 2 == 0)
+      if (j % 2 == 0) {
         keys.add(("testMultigetCount_key_"+j).getBytes());
+      }
     }
 
     // get value
@@ -860,13 +819,13 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
     Map<byte[],Integer> counts = keyspace.multigetCount(keys, clp, slicePredicate);
     assertEquals(5,counts.size());
     assertEquals(new Integer(25),counts.entrySet().iterator().next().getValue());
-    
+
     slicePredicate.setSlice_range(new SliceRange("".getBytes(), "".getBytes(), false, 5));
     counts = keyspace.multigetCount(keys, clp, slicePredicate);
-    
+
     assertEquals(5,counts.size());
     assertEquals(new Integer(5),counts.entrySet().iterator().next().getValue());
-    
+
   }
 
   @Test
@@ -878,9 +837,6 @@ public class KeyspaceTest extends BaseEmbededServerSetupTest {
   public void testGetKeyspaceName() {
     assertEquals("Keyspace1", keyspace.getName());
   }
-
-
-
 
 
 

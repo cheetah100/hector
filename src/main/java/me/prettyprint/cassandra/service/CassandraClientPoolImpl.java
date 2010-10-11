@@ -11,9 +11,10 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import me.prettyprint.cassandra.model.HectorException;
-import me.prettyprint.cassandra.model.HectorTransportException;
 import me.prettyprint.cassandra.service.CassandraClientMonitor.Counter;
+import me.prettyprint.hector.api.Cluster;
+import me.prettyprint.hector.api.exceptions.HectorException;
+import me.prettyprint.hector.api.exceptions.HectorTransportException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,13 +38,16 @@ import org.slf4j.LoggerFactory;
   private final CassandraClientMonitor clientMonitor;
 
   private CassandraHostConfigurator cassandraHostConfigurator;
-  private Cluster cluster;
+  private final Cluster cluster;
+  private DownCassandraHostRetryService downCassandraHostRetryService;
+  private PoolType poolType = PoolType.COMMONS;
+  
 
   public CassandraClientPoolImpl(CassandraClientMonitor clientMonitor) {
     log.info("Creating a CassandraClientPool");
     pools = new ConcurrentHashMap<CassandraHost, CassandraClientPoolByHost>();
     this.clientMonitor = clientMonitor;
-    this.cluster = new Cluster("Default Cluster", this);
+    this.cluster = new ThriftCluster("Default Cluster", this);
   }
 
   public CassandraClientPoolImpl(CassandraClientMonitor clientMonitor,
@@ -53,15 +57,14 @@ import org.slf4j.LoggerFactory;
     for (CassandraHost cassandraHost: cassandraHosts) {
       log.debug("Maybe creating pool-by-host instance for {} at {}", cassandraHost, this);
       getPool(cassandraHost);
-    }
-    this.cluster = new Cluster("Default Cluster", this);
+    }    
   }
 
   public CassandraClientPoolImpl(CassandraClientMonitor clientMonitor,
       CassandraHostConfigurator cassandraHostConfigurator) {
     this(clientMonitor, cassandraHostConfigurator.buildCassandraHosts());
-    this.cassandraHostConfigurator = cassandraHostConfigurator;
-    this.cluster = new Cluster("Default Cluster", this);
+    this.poolType = cassandraHostConfigurator.getPoolType();
+    this.cassandraHostConfigurator = cassandraHostConfigurator;    
   }
 
 
@@ -220,7 +223,7 @@ import org.slf4j.LoggerFactory;
 
 
   @Override
-  public void releaseKeyspace(Keyspace k) throws HectorException {
+  public void releaseKeyspace(KeyspaceService k) throws HectorException {
     releaseClient(k.getClient());
   }
 
@@ -267,6 +270,9 @@ import org.slf4j.LoggerFactory;
   @Override
   public void invalidateAllConnectionsToHost(CassandraClient client) {
     getPool(client).invalidateAll();
+    if ( downCassandraHostRetryService != null ) {
+      downCassandraHostRetryService.add(client.getCassandraHost());
+    }
   }
 
 
@@ -286,7 +292,11 @@ import org.slf4j.LoggerFactory;
     synchronized (pools) {
       CassandraClientPoolByHost pool = pools.get(cassandraHost);
       if (pool == null) {
-        pool = new CassandraClientPoolByHostImpl(cassandraHost, this, clientMonitor);
+        if ( poolType.equals(PoolType.COMMONS)) {
+          pool = new CassandraClientPoolByHostImpl(cassandraHost, this, clientMonitor);
+        } else {
+          pool = new ConcurrentCassandraClientPoolByHost(cassandraHost, this, clientMonitor);
+        }
         pools.put(cassandraHost, pool);
         if ( log.isDebugEnabled() ) {
           log.debug("GenerigObjectPool created: {} {}", pool, pool.hashCode());
@@ -300,4 +310,18 @@ import org.slf4j.LoggerFactory;
   public Cluster getCluster() {
     return cluster;
   }
+
+  @Override
+  public void initializeDownHostRetryService() {
+    if ( cassandraHostConfigurator == null ) {
+      throw new IllegalArgumentException("CassandraClientPool must be created with a CassandraHostConfigurator to use this feature");
+    }
+    downCassandraHostRetryService = new DownCassandraHostRetryService(this, cassandraHostConfigurator);
+    try {
+      JmxMonitor.INSTANCE.registerMonitor("me.prettyprint.cassandra.service", "hector", downCassandraHostRetryService);
+    } catch (Exception e) {
+      log.error("Could not initialize DownedHostRetryService MBean", e);
+    }
+  }
+  
 }

@@ -1,6 +1,6 @@
 package me.prettyprint.cassandra.service;
 
-import org.apache.cassandra.thrift.Clock;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Resolution used to create clocks.
@@ -12,17 +12,30 @@ import org.apache.cassandra.thrift.Clock;
  */
 public enum ClockResolution {
   SECONDS, MILLISECONDS, MICROSECONDS;
-  
-  public Clock createClock() {
+  /** The last time value issued. Used to try to prevent duplicates. */
+  private static final AtomicLong lastTime = new AtomicLong(Long.MIN_VALUE);
+
+  public long createClock() {
     long current = System.currentTimeMillis();
-    switch(this) {
+    switch (this) {
     case MICROSECONDS:
-      return new Clock(current * 1000);
+      // The following simmulates a microsec resolution by advancing a static counter every time
+      // a client calls the createClock method, simulating a tick.
+      long us = current * 1000;
+      if (us > lastTime.longValue()) {
+        lastTime.set(us);
+      } else { // the time i got from the system is equals or less (hope not - clock going
+               // backwards)
+        // One more "microsecond"
+        us = lastTime.incrementAndGet();
+      }
+      return us;
     case MILLISECONDS:
-      return new Clock(current);
+      return current;
     case SECONDS:
-      return new Clock(current / 1000);
-    };
-    return new Clock(current);
+      return current / 1000;
+    }
+    ;
+    return current;
   }
 }

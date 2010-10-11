@@ -4,15 +4,15 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import me.prettyprint.cassandra.model.HectorException;
-import me.prettyprint.cassandra.model.HectorTransportException;
-import me.prettyprint.cassandra.model.InvalidRequestException;
-import me.prettyprint.cassandra.model.PoolExhaustedException;
-import me.prettyprint.cassandra.model.TimedOutException;
-import me.prettyprint.cassandra.model.UnavailableException;
 import me.prettyprint.cassandra.service.CassandraClient.FailoverPolicy;
 import me.prettyprint.cassandra.service.CassandraClientMonitor.Counter;
 import me.prettyprint.cassandra.utils.Assert;
+import me.prettyprint.hector.api.exceptions.HInvalidRequestException;
+import me.prettyprint.hector.api.exceptions.HTimedOutException;
+import me.prettyprint.hector.api.exceptions.HUnavailableException;
+import me.prettyprint.hector.api.exceptions.HectorException;
+import me.prettyprint.hector.api.exceptions.HectorTransportException;
+import me.prettyprint.hector.api.exceptions.PoolExhaustedException;
 
 import org.apache.cassandra.thrift.Cassandra;
 import org.perf4j.StopWatch;
@@ -60,7 +60,7 @@ import org.slf4j.LoggerFactory;
    * A reference to the keyspace operating in this context, if it's a keyspace.
    * This can be null if no keyspace in context.
    */
-  private final Keyspace keyspace;
+  private final KeyspaceService keyspace;
 
   /**
    *
@@ -70,7 +70,7 @@ import org.slf4j.LoggerFactory;
    * be null
    */
   public FailoverOperator(FailoverPolicy policy, CassandraClientMonitor monitor,
-      CassandraClient client, CassandraClientPool clientPools, Keyspace keyspace) {
+      CassandraClient client, CassandraClientPool clientPools, KeyspaceService keyspace) {
     Assert.noneNull(policy, monitor, client, clientPools /* keyspace may be null*/);
     this.failoverPolicy = policy;
     this.knownHosts = new ArrayList<CassandraHost>(clientPools.getKnownHosts());
@@ -84,7 +84,7 @@ import org.slf4j.LoggerFactory;
   /**
    * Performs the operation and retries in in case the class is configured for
    * retries, and there are enough hosts to try and the error was
-   * {@link TimedOutException}.
+   * {@link HTimedOutException}.
    */
   public CassandraClient operate(Operation<?> op) throws HectorException {
     final StopWatch stopWatch = new Slf4JStopWatch(perf4jLogger);
@@ -107,11 +107,11 @@ import org.slf4j.LoggerFactory;
         sleepBetweenHostSkips();
         isFirst = false;
       }
-    } catch (InvalidRequestException e) {
+    } catch (HInvalidRequestException e) {
       monitor.incCounter(op.failCounter);
       stopWatch.stop(op.stopWatchTagName + ".fail_");
       throw e;
-    } catch (UnavailableException e) {
+    } catch (HUnavailableException e) {
       invalidate();
       stopWatch.stop(op.stopWatchTagName + ".fail_");
       monitor.incCounter(op.failCounter);
@@ -121,7 +121,7 @@ import org.slf4j.LoggerFactory;
       stopWatch.stop(op.stopWatchTagName + ".fail_");
       monitor.incCounter(op.failCounter);
       throw e;
-    } catch (TimedOutException e) {
+    } catch (HTimedOutException e) {
       invalidate();
       stopWatch.stop(op.stopWatchTagName + ".fail_");
       monitor.incCounter(op.failCounter);
@@ -181,7 +181,7 @@ import org.slf4j.LoggerFactory;
    */
   private boolean operateSingleIteration(Operation<?> op, final StopWatch stopWatch,
       int retries, boolean isFirst) throws HectorException,
-      PoolExhaustedException, Exception, UnavailableException, HectorTransportException {
+      PoolExhaustedException, Exception, HUnavailableException, HectorTransportException {
     if ( log.isDebugEnabled() ) {
       log.debug("Performing operation on {}; retries: {}", client.getCassandraHost().getUrl(), retries);
     }
@@ -199,7 +199,7 @@ import org.slf4j.LoggerFactory;
       }
       stopWatch.stop(op.stopWatchTagName + ".success_");
       return true;
-    } catch (TimedOutException e) {
+    } catch (HTimedOutException e) {
       log.warn("Got a TimedOutException from {}. Num of retries: {} (thread={})",
           new Object[]{client.getCassandraHost().getUrl(), retries, Thread.currentThread().getName()});
       if (retries == 0) {
@@ -208,7 +208,7 @@ import org.slf4j.LoggerFactory;
         skipToNextHost(isFirst, false);
         monitor.incCounter(Counter.RECOVERABLE_TIMED_OUT_EXCEPTIONS);
       }
-    } catch (UnavailableException e) {
+    } catch (HUnavailableException e) {
       log.warn("Got a UnavailableException from {}. Num of retries: {} (thread={})",
           new Object[]{client.getCassandraHost().getUrl(), retries, Thread.currentThread().getName()});
       if (retries == 0) {
@@ -330,8 +330,8 @@ import org.slf4j.LoggerFactory;
    * @return
    */
   private CassandraHost chooseRandomHost(List<CassandraHost> knownHosts) {
-    long rnd = Math.round(Math.random() * knownHosts.size());
-    CassandraHost host = knownHosts.get((int) rnd);
+    int rnd = (int) (Math.random() * knownHosts.size());
+    CassandraHost host = knownHosts.get(rnd);
     if ( log.isInfoEnabled() ) {
       log.info("Choosing random host to skip to: {}", host);
     }
@@ -405,7 +405,7 @@ import org.slf4j.LoggerFactory;
  * Specifies the "type" of operation - read or write.
  * It's used for perf4j, so should be in sync with hectorLog4j.xml
  * @author Ran Tavory (ran@outbain.com)
- *
+ * 
  */
 /*package*/ enum OperationType {
   /** Read operations*/
@@ -413,7 +413,9 @@ import org.slf4j.LoggerFactory;
   /** Write operations */
   WRITE,
   /** Meta read operations, such as describe*() */
-  META_READ;
+  META_READ,
+  /** Operation on one of the system_ methods */
+  META_WRITE;
 }
 
 

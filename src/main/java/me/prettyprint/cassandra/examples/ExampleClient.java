@@ -2,11 +2,11 @@ package me.prettyprint.cassandra.examples;
 
 import static me.prettyprint.cassandra.utils.StringUtils.bytes;
 import static me.prettyprint.cassandra.utils.StringUtils.string;
-import me.prettyprint.cassandra.model.HectorException;
 import me.prettyprint.cassandra.service.CassandraClient;
 import me.prettyprint.cassandra.service.CassandraClientPool;
 import me.prettyprint.cassandra.service.CassandraClientPoolFactory;
-import me.prettyprint.cassandra.service.Keyspace;
+import me.prettyprint.cassandra.service.KeyspaceService;
+import me.prettyprint.hector.api.exceptions.HectorException;
 
 import org.apache.cassandra.thrift.Column;
 import org.apache.cassandra.thrift.ColumnParent;
@@ -17,7 +17,9 @@ import org.apache.cassandra.thrift.ColumnPath;
  *
  * @author Ran Tavory (rantav@gmail.com)
  *
+ * @deprecated use ExampleDaoV2
  */
+@Deprecated
 public class ExampleClient {
 
   public static void main(String[] args) throws HectorException {
@@ -26,7 +28,7 @@ public class ExampleClient {
     // A load balanced version would look like this:
     // CassandraClient client = pool.borrowClient(new String[] {"cas1:9160", "cas2:9160", "cas3:9160"});
 
-    Keyspace keyspace = null;
+    KeyspaceService keyspace = null;
     try {
       keyspace = client.getKeyspace("Keyspace1");
       ColumnPath columnPath = new ColumnPath("Standard1");

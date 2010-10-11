@@ -7,6 +7,8 @@ import java.util.Collections;
 import java.util.List;
 
 import me.prettyprint.cassandra.utils.Assert;
+import me.prettyprint.hector.api.Serializer;
+import me.prettyprint.hector.api.exceptions.HectorException;
 
 import org.apache.cassandra.thrift.SlicePredicate;
 import org.apache.cassandra.thrift.SliceRange;
@@ -17,16 +19,18 @@ import org.apache.cassandra.thrift.SliceRange;
  * @author Ran Tavory
  *
  */
-/*package*/final class HSlicePredicate<N> {
+public final class HSlicePredicate<N> {
 
-  /** Use column names or start/finish? */
-  protected boolean useColumnNames;
   protected Collection<N> columnNames;
   protected N start;
   protected N finish;
   protected boolean reversed;
   protected int count;
+  /** Is count already set? */
+  private boolean countSet = false;
   protected final Serializer<N> columnNameSerializer;
+  protected enum PredicateType {Unknown, ColumnNames, Range};
+  protected PredicateType predicateType = PredicateType.Unknown;
 
   public HSlicePredicate(Serializer<N> columnNameSerializer) {
     Assert.notNull(columnNameSerializer, "columnNameSerializer can't be null");
@@ -41,13 +45,25 @@ import org.apache.cassandra.thrift.SliceRange;
    */
   public HSlicePredicate<N> setColumnNames(N... columnNames) {
     this.columnNames = Arrays.asList(columnNames);
-    useColumnNames = true;
+    predicateType = PredicateType.ColumnNames;
+    return this;
+  }
+
+  /**
+   * Allows the use of returning just the keys. This avoids de-serialization of row data
+   * and can be a huge optimization in some use cases
+   *
+   */
+  public HSlicePredicate<N> setKeysOnlyPredicate() {
+    this.columnNames = new ArrayList<N>();
+    predicateType = PredicateType.ColumnNames;
     return this;
   }
 
   /**
    * Set a predicate of start/finish to retrieve a list of columns in this range.
-   *
+   * Either start and or finish can be null which will toggle the underlying predicate to
+   * use an empty byte[]
    * @param start
    *          Start key
    * @param finish
@@ -57,12 +73,12 @@ import org.apache.cassandra.thrift.SliceRange;
    * @return
    */
   public HSlicePredicate<N> setRange(N start, N finish, boolean reversed, int count) {
-    Assert.noneNull(start, finish);
     this.start = start;
     this.finish = finish;
     this.reversed = reversed;
     this.count = count;
-    useColumnNames = false;
+    countSet = true;
+    predicateType = PredicateType.Range;
     return this;
   }
 
@@ -70,22 +86,41 @@ import org.apache.cassandra.thrift.SliceRange;
     return Collections.unmodifiableCollection(columnNames);
   }
 
+  /**
+   * Will throw a runtime exception if neither columnsNames nor count were set.
+   * @return
+   */
   public SlicePredicate toThrift() {
     SlicePredicate pred = new SlicePredicate();
-    if (useColumnNames) {
+
+    switch (predicateType) {
+    case ColumnNames:
       if (columnNames == null || columnNames.isEmpty()) {
         return null;
       }
       pred.setColumn_names(toThriftColumnNames(columnNames));
-    } else {
-      if (start == null || finish == null) {
-        return null;
-      }
-      SliceRange range = new SliceRange(columnNameSerializer.toBytes(start),
-          columnNameSerializer.toBytes(finish), reversed, count);
+      break;
+    case Range:
+      Assert.isTrue(countSet, "Count was not set, neither were column-names set, can't execute");
+      SliceRange range = new SliceRange(findBytes(start), findBytes(finish), reversed, count);
       pred.setSlice_range(range);
+      break;
+    case Unknown:
+    default:
+      throw new HectorException(
+          "Neither column names nor range were set, this is an invalid slice predicate");
     }
     return pred;
+  }
+
+  private byte[] findBytes(N val) {
+    byte[] valBytes;
+    if (val == null) {
+      valBytes =  new byte[]{};
+    } else {
+      valBytes = columnNameSerializer.toBytes(val);
+    }
+    return valBytes;
   }
 
   private List<byte[]> toThriftColumnNames(Collection<N> clms) {
@@ -99,6 +134,7 @@ import org.apache.cassandra.thrift.SliceRange;
   @Override
   public String toString() {
     return "HSlicePredicate("
-        + (useColumnNames ? columnNames : "cStart:" + start + ",cFinish:" + finish) + ")";
+        + (predicateType == PredicateType.ColumnNames ? columnNames :
+          "cStart:" + start + ",cFinish:" + finish) + ")";
   }
 }

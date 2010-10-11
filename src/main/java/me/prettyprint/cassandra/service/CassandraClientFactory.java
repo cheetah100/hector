@@ -1,9 +1,9 @@
 package me.prettyprint.cassandra.service;
 
 
-import me.prettyprint.cassandra.model.HectorException;
-import me.prettyprint.cassandra.model.HectorTransportException;
 import me.prettyprint.cassandra.service.CassandraClientMonitor.Counter;
+import me.prettyprint.hector.api.exceptions.HectorException;
+import me.prettyprint.hector.api.exceptions.HectorTransportException;
 
 import org.apache.cassandra.thrift.Cassandra;
 import org.apache.commons.pool.PoolableObjectFactory;
@@ -68,7 +68,7 @@ import org.slf4j.LoggerFactory;
     CassandraClient c;
     try {
       c = new CassandraClientImpl(createThriftClient(cassandraHost),
-          new KeyspaceFactory(clientMonitor), cassandraHost, pool, 
+          new KeyspaceServiceFactory(clientMonitor), cassandraHost, pool,
           pool.getCluster(), clockResolution);
     } catch (Exception e) {
       throw new HectorException(e);
@@ -77,6 +77,23 @@ import org.slf4j.LoggerFactory;
       log.debug("Creating client {}", c);
     }
     return c;
+  }
+  
+  public CassandraClient tearDown(CassandraClient cassandraClient) throws HectorException {
+    Cassandra.Client client = cassandraClient.getCassandra();
+    if ( client != null ) {
+      if ( client.getInputProtocol() != null ) {
+        if ( client.getInputProtocol().getTransport() != null ) {
+          try {
+            client.getInputProtocol().getTransport().flush();
+            client.getInputProtocol().getTransport().close();
+          } catch (Exception e) {
+            log.error("Could not close transport in tearDown", e);
+          }
+        }
+      }
+    }
+    return cassandraClient;
   }
 
   private Cassandra.Client createThriftClient(CassandraHost cassandraHost)
@@ -130,10 +147,12 @@ import org.slf4j.LoggerFactory;
     return timeoutVar;
   }
 
+  @Override
   public void activateObject(Object obj) throws Exception {
     // nada
   }
 
+  @Override
   public void destroyObject(Object obj) throws Exception {
     CassandraClient client = (CassandraClient) obj ;
     if ( log.isDebugEnabled() ) {
@@ -142,6 +161,7 @@ import org.slf4j.LoggerFactory;
     closeClient(client);
   }
 
+  @Override
   public Object makeObject() throws Exception {
     if ( log.isDebugEnabled() ) {
       log.debug("Creating a new client... (thread={})", Thread.currentThread().getName());
@@ -153,6 +173,7 @@ import org.slf4j.LoggerFactory;
     return c;
   }
 
+  @Override
   public boolean validateObject(Object obj) {
     return validateClient((CassandraClient) obj);
   }
@@ -172,6 +193,7 @@ import org.slf4j.LoggerFactory;
     cclient.markAsClosed();
   }
 
+  @Override
   public void passivateObject(Object obj) throws Exception {
     // none
   }
