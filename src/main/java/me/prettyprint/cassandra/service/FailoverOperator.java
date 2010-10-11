@@ -65,7 +65,6 @@ import org.slf4j.LoggerFactory;
   /**
    *
    * @param policy The failover policy for this operator.
-   * @param hosts The list of known hosts it can failover to.
    * @param keyspace The keyspace performing this operation (if it's a keyspace performing it). May
    * be null
    */
